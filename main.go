@@ -126,7 +126,6 @@ func run(ctx *cli.Context) error {
 
 			if modified {
 				checkTasks = append(checkTasks, task)
-				unsyncedEvents = append(unsyncedEvents, event)
 			}
 		}
 	}
