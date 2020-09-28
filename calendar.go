@@ -22,12 +22,30 @@ import (
 
 // CredentialJSON is the json version of the google credentials.
 // Please note that the trim just makes it a touch more readable.
-var CredentialJSON = bytes.TrimSpace([]byte(`
-{"installed":{"client_id":"99874128152-hva5l5m298s29nhgcn3g93b1mer2idrr.apps.googleusercontent.com","project_id":"calwarrior-1601022953055","auth_uri":"https://accounts.google.com/o/oauth2/auth","token_uri":"https://oauth2.googleapis.com/token","auth_provider_x509_cert_url":"https://www.googleapis.com/oauth2/v1/certs","client_secret":"MjS0X-K48QnTJZc65UQsGxuV","redirect_uris":["urn:ietf:wg:oauth:2.0:oob","http://localhost"]}}
-`))
+var CredentialJSON []byte
 
 func init() {
+	// take the creds from the environment
+	// otherwise, credentials.json in the calwarrior dir
+	// finally, take the default credentials.
 	creds := os.Getenv("CALWARRIOR_CREDENTIALS")
+	if creds == "" {
+		dir, err := findSettingsDir()
+		if err != nil {
+			panic(fmt.Sprintf("Creating settings directory: %v", err))
+		}
+
+		tmp := filepath.Join(dir, "credential.json")
+
+		if _, err := os.Stat(tmp); errors.Is(err, os.ErrNotExist) {
+			CredentialJSON = bytes.TrimSpace([]byte(`
+{"installed":{"client_id":"99874128152-hva5l5m298s29nhgcn3g93b1mer2idrr.apps.googleusercontent.com","project_id":"calwarrior-1601022953055","auth_uri":"https://accounts.google.com/o/oauth2/auth","token_uri":"https://oauth2.googleapis.com/token","auth_provider_x509_cert_url":"https://www.googleapis.com/oauth2/v1/certs","client_secret":"MjS0X-K48QnTJZc65UQsGxuV","redirect_uris":["urn:ietf:wg:oauth:2.0:oob","http://localhost"]}}
+`))
+		} else {
+			creds = tmp
+		}
+	}
+
 	if creds != "" {
 		b, err := ioutil.ReadFile(creds)
 		if err != nil {
@@ -36,6 +54,7 @@ func init() {
 
 		CredentialJSON = bytes.TrimSpace(b)
 	}
+
 }
 
 func toCalendarTime(t time.Time) string {
@@ -90,11 +109,6 @@ func getClient(config *oauth2.Config) (*http.Client, error) {
 		return nil, err
 	}
 
-	// not really sure where best to do this.
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return nil, err
-	}
-
 	tokFile := filepath.Join(dir, "token.json")
 	tok, err := tokenFromFile(tokFile)
 	if err != nil {
@@ -112,7 +126,13 @@ func findSettingsDir() (string, error) {
 
 	for _, dir := range osSettingsMap[runtime.GOOS] {
 		if dir != "" {
-			return filepath.Join(dir, "calwarrior"), nil
+			dir = filepath.Join(dir, "calwarrior")
+
+			// not really sure where best to do this.
+			if err := os.MkdirAll(dir, 0700); err != nil {
+				return "", err
+			}
+			return dir, nil
 		}
 	}
 
