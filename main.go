@@ -1,0 +1,251 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"time"
+
+	"github.com/urfave/cli"
+	"google.golang.org/api/calendar/v3"
+)
+
+func main() {
+	app := cli.NewApp()
+
+	app.Flags = []cli.Flag{
+		cli.DurationFlag{
+			Name:  "duration, d",
+			Usage: "Upcoming items to monitor in google calendar. Keeping this small and polling frequently is better",
+			Value: 7 * 24 * time.Hour,
+		},
+		cli.StringSliceFlag{
+			Name:  "tag, t",
+			Usage: "Tag new items coming from google calendar with the specified tag(s).",
+			Value: &cli.StringSlice{"calendar"},
+		},
+	}
+
+	app.Action = run
+
+	if err := app.Run(os.Args); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func makeTags(ctx *cli.Context) ([]string, []string, error) {
+	slice := ctx.GlobalStringSlice("tag")
+	if len(slice) == 0 {
+		return nil, nil, errors.New("at least one tag is required")
+	}
+
+	tags := []string{}
+
+	for i := range slice {
+		tags = append(tags, "+"+slice[i])
+	}
+
+	return slice, tags, nil
+}
+
+func run(ctx *cli.Context) error {
+	tw, err := findTaskwarrior()
+	if err != nil {
+		return err
+	}
+
+	slice, tags, err := makeTags(ctx)
+	if err != nil {
+		return err
+	}
+
+	tasks, err := exportTasksByCommand(tw, append([]string{"export"}, tags...)...)
+	if err != nil {
+		return err
+	}
+
+	srv, err := getCalendarClient()
+	if err != nil {
+		return fmt.Errorf("Trouble contacting google calendar: %w", err)
+	}
+
+	t1 := time.Now().Add(-time.Hour * 24)
+	t2 := t1.Add(ctx.GlobalDuration("duration"))
+
+	eventsIDMap := map[string]*calendar.Event{}
+
+	events, err := gatherEvents(srv, t1, t2)
+	if err != nil {
+		return fmt.Errorf("Trouble gathering events: %w", err)
+	}
+
+	for _, event := range events.Items {
+		eventsIDMap[event.Id] = event
+	}
+
+	unsyncedTasks := []*taskWarriorItem{}
+	checkTasks := []*taskWarriorItem{}
+	deletedTasks := []*taskWarriorItem{}
+	deletedTaskCalMap := map[string]struct{}{}
+
+	for _, task := range tasks {
+		if task.Status == "deleted" {
+			if _, ok := eventsIDMap[task.CalendarID]; ok && task.CalendarID != "" {
+				deletedTasks = append(deletedTasks, task)
+				deletedTaskCalMap[task.CalendarID] = struct{}{}
+			}
+
+			continue
+		}
+
+		if task.CalendarID == "" {
+			unsyncedTasks = append(unsyncedTasks, task)
+		} else {
+			checkTasks = append(checkTasks, task)
+		}
+	}
+
+	taskIDMap := map[string]*taskWarriorItem{}
+
+	for _, task := range checkTasks {
+		taskIDMap[task.CalendarID] = task
+	}
+
+	unsyncedEvents := []*calendar.Event{}
+
+	for _, event := range events.Items {
+		task := taskIDMap[event.Id]
+		if task == nil {
+			unsyncedEvents = append(unsyncedEvents, event)
+		} else {
+			modified, err := unify(task, event)
+			if err != nil {
+				return err
+			}
+
+			if modified {
+				checkTasks = append(checkTasks, task)
+				unsyncedEvents = append(unsyncedEvents, event)
+			}
+		}
+	}
+
+	syncedTasks := []*taskWarriorItem{}
+
+	for _, event := range unsyncedEvents {
+		if _, ok := deletedTaskCalMap[event.Id]; ok {
+			continue
+		}
+
+		fmt.Printf("Syncing %q (%.20q) to taskwarrior\n", event.Id, event.Summary)
+		due, err := eventDue(event)
+		if err != nil {
+			return err
+		}
+
+		syncedTasks = append(syncedTasks, &taskWarriorItem{
+			Description: event.Summary,
+			Status:      "pending",
+			Entry:       toTaskWarriorTime(time.Now()),
+			Due:         due,
+			Tags:        slice,
+			CalendarID:  event.Id,
+		})
+	}
+
+	if err := importTasks(tw, syncedTasks); err != nil {
+		return fmt.Errorf("Could not import tasks: %w", err)
+	}
+
+	resyncTasks := []*taskWarriorItem{}
+
+	for _, task := range checkTasks {
+		due, err := taskTimeToGCal(task.Due)
+		if err != nil {
+			return fmt.Errorf("Task %q (%.20q) Could not convert due time to gcal event time: %w", task.UUID, task.Description, err)
+		}
+
+		var action bool
+
+		if task.CalendarID != "" {
+			event, err := getEvent(srv, task.CalendarID)
+			if err != nil {
+				return fmt.Errorf("Could not retrieve event for calendar ID %q: %w", task.CalendarID, err)
+			}
+
+			m, err := unify(task, event)
+			if err != nil {
+				return fmt.Errorf("Error reconciling task and event: %w", err)
+			}
+
+			if m {
+				event, err = modifyEvent(srv, event)
+				if err != nil {
+					return fmt.Errorf("Error modifying calendar event: %w", err)
+				}
+				action = true
+			}
+		} else {
+			var err error
+
+			event, err := insertEvent(srv, &calendar.Event{
+				Summary: task.Description,
+				Start:   due,
+				End:     due,
+			})
+			if err != nil {
+				return fmt.Errorf("Error inserting calendar event: %w", err)
+			}
+
+			m, err := unify(task, event)
+			if err != nil {
+				return fmt.Errorf("Error reconciling task and event: %w", err)
+			}
+
+			action = m
+		}
+
+		if action {
+			fmt.Printf("Pushing %q (%.20q) to gcal\n", task.UUID, task.Description)
+			resyncTasks = append(resyncTasks, task)
+		}
+	}
+
+	for _, task := range unsyncedTasks {
+		due, err := taskTimeToGCal(task.Due)
+		if err != nil {
+			return fmt.Errorf("Task %q (%.20q) Could not convert due time to gcal event time: %w", task.UUID, task.Description, err)
+		}
+
+		event, err := insertEvent(srv, &calendar.Event{
+			Summary: task.Description,
+			Start:   due,
+			End:     due,
+		})
+		if err != nil {
+			return fmt.Errorf("Error inserting calendar event: %w", err)
+		}
+
+		m, err := unify(task, event)
+		if err != nil {
+			return fmt.Errorf("Error reconciling task and event: %w", err)
+		}
+
+		if m {
+			resyncTasks = append(resyncTasks, task)
+		}
+	}
+
+	for _, task := range deletedTasks {
+		if err := deleteEvent(srv, task.CalendarID); err == nil {
+			fmt.Printf("Deleting task %q (%.20q)\n", task.UUID, task.Description)
+		}
+	}
+
+	if err := importTasks(tw, resyncTasks); err != nil {
+		return fmt.Errorf("Could not import tasks: %w", err)
+	}
+
+	return nil
+}
