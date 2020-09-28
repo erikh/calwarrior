@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/urfave/cli"
@@ -12,6 +13,9 @@ import (
 
 func main() {
 	app := cli.NewApp()
+	app.Author = "Erik Hollensbe <erik+github@hollensbe.org>"
+	app.Usage = "Synchronize Google Calendar and Taskwarrior"
+	app.UsageText = filepath.Base(os.Args[0]) + " [--flags or help]"
 
 	app.Flags = []cli.Flag{
 		cli.DurationFlag{
