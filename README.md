@@ -21,16 +21,23 @@ $ calwarrior # launches with defaults
 $ calwarrior --help # it has options and even help!
 ```
 
+## Google Calendar OAuth2 credentials
+
+`calwarrior` needs oauth2 credentials to talk to google calendar.
+
+You can accomplish this one of 3 ways :
+
+- The first two require you generate your own oauth2 client; this is **strongly recommended**.
+  - Setting the environment variable `CALWARRIOR_CREDENTIALS` to the `credentials.json` file.
+  - Putting the `credentials.json` in the `calwarrior` settings directory.
+- Finally, you can try it by using the default oauth2 credentials embedded in the source code.
+
+## Configuration Directory
+
 `calwarrior` will attempt to launch your browser and stuff credentials in your
 home directory (`$HOME/Library/calwarrior` or `$HOME/.config/calwarrior` on
 Linux). Follow the instructions and paste in the code into the terminal to save
 the token. It works with the default `task` or `taskw` command on your `$PATH`.
-
-`calwarrior` also has a hard-coded authentication credential/application for
-OAuth, but you can create your own on your google sign-in services page, and
-set `CALWARRIOR_CREDENTIALS` in the environment to the OAuth application's
-`credentials.json`. This will override the hard-coded defaults if you don't
-feel comfortable using another client credential.
 
 ## Bugs
 
