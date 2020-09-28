@@ -8,8 +8,6 @@ I found a project that didn't work but seeded the idea for this program.
 
 ## Installation:
 
-This will move to github eventually, so these URLs are **not** permanent.
-
 Install [golang](https://golang.org).
 
 ```bash
