@@ -66,7 +66,7 @@ func run(ctx *cli.Context) error {
 		return err
 	}
 
-	t1 := time.Now().Add(-time.Hour * 1)
+	t1 := time.Now().Add(-time.Hour * 24)
 	t2 := t1.Add(ctx.Duration("duration"))
 
 	tasks, err := tw.exportTasksByCommand(append([]string{"export"}, tags...)...)
