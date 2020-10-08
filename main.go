@@ -7,26 +7,26 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/urfave/cli"
+	"github.com/urfave/cli/v2"
 	"google.golang.org/api/calendar/v3"
 )
 
 func main() {
 	app := cli.NewApp()
-	app.Author = "Erik Hollensbe <erik+github@hollensbe.org>"
+	app.Authors = []*cli.Author{{Name: "Erik Hollensbe", Email: "erik+github@hollensbe.org"}}
 	app.Usage = "Synchronize Google Calendar and Taskwarrior"
 	app.UsageText = filepath.Base(os.Args[0]) + " [--flags or help]"
 
 	app.Flags = []cli.Flag{
-		cli.DurationFlag{
+		&cli.DurationFlag{
 			Name:  "duration, d",
 			Usage: "Upcoming items to monitor in google calendar. Keeping this small and polling frequently is better",
 			Value: 7 * 24 * time.Hour,
 		},
-		cli.StringSliceFlag{
+		&cli.StringSliceFlag{
 			Name:  "tag, t",
 			Usage: "Tag new items coming from google calendar with the specified tag(s).",
-			Value: &cli.StringSlice{"calendar"},
+			Value: cli.NewStringSlice("calendar"),
 		},
 	}
 
@@ -39,7 +39,7 @@ func main() {
 }
 
 func makeTags(ctx *cli.Context) ([]string, []string, error) {
-	slice := ctx.GlobalStringSlice("tag")
+	slice := ctx.StringSlice("tag")
 	if len(slice) == 0 {
 		return nil, nil, errors.New("at least one tag is required")
 	}
@@ -75,7 +75,7 @@ func run(ctx *cli.Context) error {
 	}
 
 	t1 := time.Now().Add(-time.Hour * 24)
-	t2 := t1.Add(ctx.GlobalDuration("duration"))
+	t2 := t1.Add(ctx.Duration("duration"))
 
 	eventsIDMap := map[string]*calendar.Event{}
 
