@@ -50,8 +50,6 @@ func makeTags(ctx *cli.Context) ([]string, []string, error) {
 		tags = append(tags, "+"+slice[i])
 	}
 
-	fmt.Println(tags)
-
 	return slice, tags, nil
 }
 
