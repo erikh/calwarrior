@@ -50,6 +50,8 @@ func makeTags(ctx *cli.Context) ([]string, []string, error) {
 		tags = append(tags, "+"+slice[i])
 	}
 
+	fmt.Println(tags)
+
 	return slice, tags, nil
 }
 
@@ -64,7 +66,10 @@ func run(ctx *cli.Context) error {
 		return err
 	}
 
-	tasks, err := exportTasksByCommand(tw, append([]string{"export"}, tags...)...)
+	t1 := time.Now().Add(-time.Hour * 1)
+	t2 := t1.Add(ctx.Duration("duration"))
+
+	tasks, err := tw.exportTasksByCommand(append([]string{"export"}, tags...)...)
 	if err != nil {
 		return err
 	}
@@ -73,9 +78,6 @@ func run(ctx *cli.Context) error {
 	if err != nil {
 		return fmt.Errorf("Trouble contacting google calendar: %w", err)
 	}
-
-	t1 := time.Now().Add(-time.Hour * 24)
-	t2 := t1.Add(ctx.Duration("duration"))
 
 	eventsIDMap := map[string]*calendar.Event{}
 
@@ -88,19 +90,17 @@ func run(ctx *cli.Context) error {
 		eventsIDMap[event.Id] = event
 	}
 
-	unsyncedTasks := []*taskWarriorItem{}
-	checkTasks := []*taskWarriorItem{}
-	deletedTasks := []*taskWarriorItem{}
+	unsyncedTasks := taskWarriorItems{}
+	checkTasks := taskWarriorItems{}
+	deletedTasks := taskWarriorItems{}
 	deletedTaskCalMap := map[string]struct{}{}
 
 	for _, task := range tasks {
-		if task.Status == "deleted" {
+		if task.Status == "deleted" || task.Status == "completed" {
 			if _, ok := eventsIDMap[task.CalendarID]; ok && task.CalendarID != "" {
 				deletedTasks = append(deletedTasks, task)
 				deletedTaskCalMap[task.CalendarID] = struct{}{}
 			}
-
-			continue
 		}
 
 		if task.CalendarID == "" {
@@ -119,8 +119,9 @@ func run(ctx *cli.Context) error {
 	unsyncedEvents := []*calendar.Event{}
 
 	for _, event := range events.Items {
-		task := taskIDMap[event.Id]
-		if task == nil {
+		id := event.Id
+		task, ok := taskIDMap[id]
+		if !ok {
 			unsyncedEvents = append(unsyncedEvents, event)
 		} else {
 			modified, err := unify(task, event)
@@ -134,10 +135,11 @@ func run(ctx *cli.Context) error {
 		}
 	}
 
-	syncedTasks := []*taskWarriorItem{}
+	syncedTasks := taskWarriorItems{}
 
 	for _, event := range unsyncedEvents {
-		if _, ok := deletedTaskCalMap[event.Id]; ok {
+		id := event.Id
+		if _, ok := deletedTaskCalMap[id]; ok {
 			continue
 		}
 
@@ -157,11 +159,11 @@ func run(ctx *cli.Context) error {
 		})
 	}
 
-	if err := importTasks(tw, syncedTasks); err != nil {
+	if err := tw.importTasks(syncedTasks); err != nil {
 		return fmt.Errorf("Could not import tasks: %w", err)
 	}
 
-	resyncTasks := []*taskWarriorItem{}
+	resyncTasks := taskWarriorItems{}
 
 	for _, task := range checkTasks {
 		due, err := taskTimeToGCal(task.Due)
@@ -174,7 +176,8 @@ func run(ctx *cli.Context) error {
 		if task.CalendarID != "" {
 			event, err := getEvent(srv, task.CalendarID)
 			if err != nil {
-				return fmt.Errorf("Could not retrieve event for calendar ID %q: %w", task.CalendarID, err)
+				fmt.Printf("Could not retrieve event for calendar ID %q: %v\n", task.CalendarID, err)
+				continue
 			}
 
 			m, err := unify(task, event)
@@ -246,7 +249,7 @@ func run(ctx *cli.Context) error {
 		}
 	}
 
-	if err := importTasks(tw, resyncTasks); err != nil {
+	if err := tw.importTasks(resyncTasks); err != nil {
 		return fmt.Errorf("Could not import tasks: %w", err)
 	}
 
