@@ -45,7 +45,7 @@ func (ctx *cliContext) run() error {
 		return err
 	}
 
-	srv, err := getCalendarClient()
+	cal, err := getCalendarClient()
 	if err != nil {
 		return fmt.Errorf("Trouble contacting google calendar: %w", err)
 	}
@@ -54,7 +54,7 @@ func (ctx *cliContext) run() error {
 
 	t1, t2 := ctx.getTimeWindow()
 
-	events, err := gatherEvents(srv, t1, t2)
+	events, err := cal.gatherEvents(t1, t2)
 	if err != nil {
 		return fmt.Errorf("Trouble gathering events: %w", err)
 	}
@@ -141,7 +141,7 @@ func (ctx *cliContext) run() error {
 		var action bool
 
 		if task.CalendarID != "" {
-			event, err := getEvent(srv, task.CalendarID)
+			event, err := cal.getEvent(task.CalendarID)
 			if err != nil {
 				fmt.Printf("Could not retrieve event for calendar ID %q: %v\n", task.CalendarID, err)
 				continue
@@ -153,7 +153,7 @@ func (ctx *cliContext) run() error {
 			}
 
 			if m {
-				event, err = modifyEvent(srv, event)
+				event, err = cal.modifyEvent(event)
 				if err != nil {
 					return fmt.Errorf("Error modifying calendar event: %w", err)
 				}
@@ -163,7 +163,7 @@ func (ctx *cliContext) run() error {
 		} else {
 			var err error
 
-			event, err := insertEvent(srv, &calendar.Event{
+			event, err := cal.insertEvent(&calendar.Event{
 				Summary: task.Description,
 				Start:   due,
 				End:     due,
@@ -192,7 +192,7 @@ func (ctx *cliContext) run() error {
 			return fmt.Errorf("Task %q (%.20q) Could not convert due time to gcal event time: %w", task.UUID, task.Description, err)
 		}
 
-		event, err := insertEvent(srv, &calendar.Event{
+		event, err := cal.insertEvent(&calendar.Event{
 			Summary: task.Description,
 			Start:   due,
 			End:     due,
@@ -212,7 +212,7 @@ func (ctx *cliContext) run() error {
 	}
 
 	for _, task := range deletedTasks {
-		if err := deleteEvent(srv, task.CalendarID); err == nil {
+		if err := cal.deleteEvent(task.CalendarID); err == nil {
 			fmt.Printf("Deleting task %q (%.20q)\n", task.UUID, task.Description)
 		}
 	}
