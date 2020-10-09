@@ -115,3 +115,15 @@ func (twi *taskWarriorItems) unmarshalItems(out []byte) error {
 
 	return nil
 }
+
+type taskWarriorTags []string
+
+func (twt taskWarriorTags) decorate() []string {
+	tags := []string{}
+
+	for i := range twt {
+		tags = append(tags, "+"+twt[i])
+	}
+
+	return tags
+}

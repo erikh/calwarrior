@@ -39,6 +39,16 @@ home directory (`$HOME/Library/calwarrior` or `$HOME/.config/calwarrior` on
 Linux). Follow the instructions and paste in the code into the terminal to save
 the token. It works with the default `task` or `taskw` command on your `$PATH`.
 
+## Troubleshooting
+
+If you start seeing error messages like this:
+
+```
+Error modifying calendar event: googleapi: Error 400: Invalid time zone definition for start time.
+```
+
+This is because your `TZ` or `ZONEINFO` environment variables are not set. `man tzname` for more information.
+
 ## Bugs
 
 It's not very well tested at all, and the code is pretty ugly. But it seems to
