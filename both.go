@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -56,7 +57,7 @@ func taskTimeToGCal(tw taskWarriorTime) (*calendar.EventDateTime, error) {
 		return nil, err
 	}
 
-	return &calendar.EventDateTime{DateTime: toCalendarTime(t)}, nil
+	return &calendar.EventDateTime{DateTime: toCalendarTime(t), TimeZone: time.Local.String()}, nil
 }
 
 func unify(task *taskWarriorItem, event *calendar.Event) (bool, error) {
@@ -65,6 +66,28 @@ func unify(task *taskWarriorItem, event *calendar.Event) (bool, error) {
 	}
 
 	modified := false
+	taskNewer := true
+
+	taskModified, err := task.Modified.ToTime()
+	if err != nil {
+		taskModified = time.Time{}
+	}
+
+	var calModified time.Time
+
+	ct, err := gcalTimeToTaskWarrior(event.Updated)
+	if err != nil {
+		calModified = time.Time{}
+	} else {
+		calModified, err = ct.ToTime()
+		if err != nil {
+			calModified = time.Time{}
+		}
+	}
+
+	if taskModified.Before(calModified) {
+		taskNewer = false
+	}
 
 	if task.CalendarID != event.Id {
 		task.CalendarID = event.Id
@@ -72,8 +95,13 @@ func unify(task *taskWarriorItem, event *calendar.Event) (bool, error) {
 	}
 
 	if strings.TrimSpace(task.Description) != strings.TrimSpace(event.Summary) {
-		task.Description = strings.TrimSpace(event.Summary)
-		event.Summary = task.Description
+		if taskNewer {
+			event.Summary = strings.TrimSpace(task.Description)
+			task.Description = event.Summary
+		} else {
+			task.Description = strings.TrimSpace(event.Summary)
+			event.Summary = task.Description
+		}
 		modified = true
 	}
 
@@ -83,7 +111,17 @@ func unify(task *taskWarriorItem, event *calendar.Event) (bool, error) {
 	}
 
 	if due != task.Due {
-		task.Due = due
+		if taskNewer {
+			var err error
+			event.Start, err = taskTimeToGCal(task.Due)
+			event.End = event.Start
+			if err != nil {
+				return false, fmt.Errorf("Task %q could not assign start time to calendar id %q: %w", task.UUID, event.Id, err)
+			}
+		} else {
+			task.Due = due
+		}
+
 		modified = true
 	}
 

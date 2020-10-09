@@ -30,12 +30,12 @@ func (ctx *cliContext) getTimeWindow() (time.Time, time.Time) {
 }
 
 func (ctx *cliContext) run() error {
-	tw, err := findTaskwarrior()
+	tags, err := ctx.makeTags()
 	if err != nil {
 		return err
 	}
 
-	tags, err := ctx.makeTags()
+	tw, err := findTaskwarrior()
 	if err != nil {
 		return err
 	}
@@ -132,12 +132,6 @@ func (ctx *cliContext) run() error {
 		})
 	}
 
-	if err := tw.importTasks(syncedTasks); err != nil {
-		return fmt.Errorf("Could not import tasks: %w", err)
-	}
-
-	resyncTasks := taskWarriorItems{}
-
 	for _, task := range checkTasks {
 		due, err := taskTimeToGCal(task.Due)
 		if err != nil {
@@ -163,8 +157,9 @@ func (ctx *cliContext) run() error {
 				if err != nil {
 					return fmt.Errorf("Error modifying calendar event: %w", err)
 				}
-				action = true
 			}
+
+			action = m
 		} else {
 			var err error
 
@@ -187,7 +182,7 @@ func (ctx *cliContext) run() error {
 
 		if action {
 			fmt.Printf("Pushing %q (%.20q) to gcal\n", task.UUID, task.Description)
-			resyncTasks = append(resyncTasks, task)
+			checkTasks = append(checkTasks, task)
 		}
 	}
 
@@ -212,7 +207,7 @@ func (ctx *cliContext) run() error {
 		}
 
 		if m {
-			resyncTasks = append(resyncTasks, task)
+			checkTasks = append(checkTasks, task)
 		}
 	}
 
@@ -222,7 +217,7 @@ func (ctx *cliContext) run() error {
 		}
 	}
 
-	if err := tw.importTasks(resyncTasks); err != nil {
+	if err := tw.importTasks(checkTasks); err != nil {
 		return fmt.Errorf("Could not import tasks: %w", err)
 	}
 
