@@ -7,6 +7,10 @@ import (
 	"google.golang.org/api/calendar/v3"
 )
 
+func toCalendarTime(t time.Time) string {
+	return t.Format(time.RFC3339)
+}
+
 func eventDue(event *calendar.Event) (taskWarriorTime, error) {
 	if event == nil {
 		return "", errors.New("event is nil")
