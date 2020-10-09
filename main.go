@@ -55,6 +55,13 @@ func makeTags(ctx *cli.Context) ([]string, []string, error) {
 	return slice, tags, nil
 }
 
+func getTimeWindow(ctx *cli.Context) (time.Time, time.Time) {
+	t1 := time.Now().Add(-time.Hour * 24)
+	t2 := t1.Add(ctx.Duration("duration"))
+
+	return t1, t2
+}
+
 func run(ctx *cli.Context) error {
 	tw, err := findTaskwarrior()
 	if err != nil {
@@ -65,9 +72,6 @@ func run(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-
-	t1 := time.Now().Add(-time.Hour * 24)
-	t2 := t1.Add(ctx.Duration("duration"))
 
 	tasks, err := tw.exportTasksByCommand(append([]string{"export"}, tags...)...)
 	if err != nil {
@@ -80,6 +84,8 @@ func run(ctx *cli.Context) error {
 	}
 
 	eventsIDMap := map[string]*calendar.Event{}
+
+	t1, t2 := getTimeWindow(ctx)
 
 	events, err := gatherEvents(srv, t1, t2)
 	if err != nil {
