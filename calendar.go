@@ -34,7 +34,7 @@ func getCalendarClient() (*calendarClient, error) {
 
 func (cal *calendarClient) gatherEvents(t1, t2 time.Time) (*calendar.Events, error) {
 	return cal.Events.List("primary").ShowDeleted(false).
-		SingleEvents(true).TimeMin(toCalendarTime(t1)).TimeMax(toCalendarTime(t2)).OrderBy("startTime").Do()
+		SingleEvents(true).TimeMin(string(toCalendarTime(t1))).TimeMax(string(toCalendarTime(t2))).OrderBy("startTime").Do()
 }
 
 func (cal *calendarClient) insertEvent(event *calendar.Event) (*calendar.Event, error) {

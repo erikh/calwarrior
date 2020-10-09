@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os/exec"
 	"time"
+
+	"google.golang.org/api/calendar/v3"
 )
 
 const twTimeFormat = "20060102T150405Z"
@@ -75,6 +77,15 @@ func (twt taskWarriorTime) ToTime() (time.Time, error) {
 		return time.Time{}, errors.New("time is blank")
 	}
 	return time.Parse(twTimeFormat, string(twt))
+}
+
+func (twt taskWarriorTime) ToGCal() (*calendar.EventDateTime, error) {
+	t, err := twt.ToTime()
+	if err != nil {
+		return nil, err
+	}
+
+	return &calendar.EventDateTime{DateTime: string(toCalendarTime(t)), TimeZone: time.Local.String()}, nil
 }
 
 func toTaskWarriorTime(t time.Time) taskWarriorTime {

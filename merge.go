@@ -24,7 +24,7 @@ func unify(task *taskWarriorItem, event *calendar.Event) (bool, error) {
 
 	var calModified time.Time
 
-	ct, err := gcalTimeToTaskWarrior(event.Updated)
+	ct, err := calendarTime(event.Updated).ToTaskWarriorTime()
 	if err != nil {
 		calModified = time.Time{}
 	} else {
@@ -62,7 +62,7 @@ func unify(task *taskWarriorItem, event *calendar.Event) (bool, error) {
 	if due != task.Due {
 		if taskNewer {
 			var err error
-			event.Start, err = taskTimeToGCal(task.Due)
+			event.Start, err = task.Due.ToGCal()
 			event.End = event.Start
 			if err != nil {
 				return false, fmt.Errorf("Task %q could not assign start time to calendar id %q: %w", task.UUID, event.Id, err)
@@ -87,7 +87,6 @@ type merge struct {
 	unsyncedTasks     taskWarriorItems
 	checkTasks        taskWarriorItems
 	deletedTasks      taskWarriorItems
-	syncedTasks       taskWarriorItems
 	deletedTaskCalMap map[string]struct{}
 	taskIDMap         map[string]*taskWarriorItem
 }
@@ -103,7 +102,6 @@ func newMerge(ctx *cliContext, tw *taskWarrior, cal *calendarClient) *merge {
 		unsyncedTasks:     taskWarriorItems{},
 		checkTasks:        taskWarriorItems{},
 		deletedTasks:      taskWarriorItems{},
-		syncedTasks:       taskWarriorItems{},
 		deletedTaskCalMap: map[string]struct{}{},
 		taskIDMap:         map[string]*taskWarriorItem{},
 	}
@@ -136,8 +134,7 @@ func (m *merge) makeIDMaps(tasks taskWarriorItems, events *calendar.Events) {
 
 func (m *merge) determineAlreadySyncedTaskWarrior(events *calendar.Events) error {
 	for _, event := range events.Items {
-		id := event.Id
-		task, ok := m.taskIDMap[id]
+		task, ok := m.taskIDMap[event.Id]
 		if !ok {
 			m.unsyncedEvents = append(m.unsyncedEvents, event)
 		} else {
@@ -162,8 +159,7 @@ func (m *merge) syncTasks() error {
 	}
 
 	for _, event := range m.unsyncedEvents {
-		id := event.Id
-		if _, ok := m.deletedTaskCalMap[id]; ok {
+		if _, ok := m.deletedTaskCalMap[event.Id]; ok {
 			continue
 		}
 
@@ -173,7 +169,7 @@ func (m *merge) syncTasks() error {
 			return err
 		}
 
-		m.syncedTasks = append(m.syncedTasks, &taskWarriorItem{
+		m.checkTasks = append(m.checkTasks, &taskWarriorItem{
 			Description: strings.TrimSpace(event.Summary),
 			Status:      "pending",
 			Entry:       toTaskWarriorTime(time.Now()),
@@ -248,6 +244,36 @@ func (m *merge) createNewEvent(task *taskWarriorItem, due *calendar.EventDateTim
 	return modified, nil
 }
 
+func (m *merge) filterTasks() {
+	tm := map[string]*taskWarriorItem{} // UUID -> item
+
+	newTasks := taskWarriorItems{}
+
+	// overwrite in order
+	for _, task := range m.checkTasks {
+		// skip if no UUID
+		if task.UUID == "" {
+			fmt.Printf("Creating new task for %q\n", task.Description)
+			newTasks = append(newTasks, task)
+			continue
+		}
+
+		if _, ok := tm[task.UUID]; ok {
+			fmt.Printf("Filtering duplicate task %q (%q)\n", task.UUID, task.Description)
+		}
+
+		tm[task.UUID] = task
+	}
+
+	fmt.Println("Making new list of tasks for insertion")
+	for _, task := range tm {
+		fmt.Printf("Updating task %q: %q\n", task.UUID, task.Description)
+		newTasks = append(newTasks, task)
+	}
+
+	m.checkTasks = newTasks
+}
+
 func (m *merge) run() error {
 	tasks, events, err := m.get()
 	if err != nil {
@@ -273,11 +299,12 @@ func (m *merge) run() error {
 				return err
 			}
 		} else {
-			due, err := taskTimeToGCal(task.Due)
+			due, err := task.Due.ToGCal()
 			if err != nil {
 				return fmt.Errorf("Task %q (%.20q) Could not convert due time to gcal event time: %w", task.UUID, task.Description, err)
 			}
 
+			fmt.Printf("Pushing %q (%.20q) to gcal\n", task.UUID, task.Description)
 			action, err = m.createNewEvent(task, due)
 			if err != nil {
 				return err
@@ -285,18 +312,21 @@ func (m *merge) run() error {
 		}
 
 		if action {
-			fmt.Printf("Pushing %q (%.20q) to gcal\n", task.UUID, task.Description)
 			m.checkTasks = append(m.checkTasks, task)
 		}
 	}
 
 	for _, task := range m.unsyncedTasks {
-		due, err := taskTimeToGCal(task.Due)
+		due, err := task.Due.ToGCal()
 		if err != nil {
 			return fmt.Errorf("Task %q (%.20q) Could not convert due time to gcal event time: %w", task.UUID, task.Description, err)
 		}
 
 		modified, err := m.createNewEvent(task, due)
+		if err != nil {
+			return err
+		}
+
 		if modified {
 			m.checkTasks = append(m.checkTasks, task)
 		}
@@ -307,6 +337,8 @@ func (m *merge) run() error {
 			fmt.Printf("Deleting task %q (%.20q)\n", task.UUID, task.Description)
 		}
 	}
+
+	m.filterTasks()
 
 	if err := m.tw.importTasks(m.checkTasks); err != nil {
 		return fmt.Errorf("Could not import tasks: %w", err)
