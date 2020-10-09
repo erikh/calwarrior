@@ -19,14 +19,16 @@ func main() {
 
 	app.Flags = []cli.Flag{
 		&cli.DurationFlag{
-			Name:  "duration, d",
-			Usage: "Upcoming items to monitor in google calendar. Keeping this small and polling frequently is better",
-			Value: 7 * 24 * time.Hour,
+			Name:    "duration",
+			Aliases: []string{"d"},
+			Usage:   "Upcoming items to monitor in google calendar. Keeping this small and polling frequently is better",
+			Value:   7 * 24 * time.Hour,
 		},
 		&cli.StringSliceFlag{
-			Name:  "tag, t",
-			Usage: "Tag new items coming from google calendar with the specified tag(s).",
-			Value: cli.NewStringSlice("calendar"),
+			Name:    "tag",
+			Aliases: []string{"t"},
+			Usage:   "Tag new items coming from google calendar with the specified tag(s).",
+			Value:   cli.NewStringSlice("calendar"),
 		},
 	}
 
