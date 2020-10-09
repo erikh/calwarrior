@@ -32,10 +32,6 @@ func getCalendarClient() (*calendarClient, error) {
 	return &calendarClient{srv}, nil
 }
 
-func toCalendarTime(t time.Time) string {
-	return t.Format(time.RFC3339)
-}
-
 func (cal *calendarClient) gatherEvents(t1, t2 time.Time) (*calendar.Events, error) {
 	return cal.Events.List("primary").ShowDeleted(false).
 		SingleEvents(true).TimeMin(toCalendarTime(t1)).TimeMax(toCalendarTime(t2)).OrderBy("startTime").Do()
