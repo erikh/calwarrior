@@ -112,7 +112,7 @@ func (m *merge) run() error {
 		}
 
 		m.syncedTasks = append(m.syncedTasks, &taskWarriorItem{
-			Description: event.Summary,
+			Description: strings.TrimSpace(event.Summary),
 			Status:      "pending",
 			Entry:       toTaskWarriorTime(time.Now()),
 			Due:         due,
