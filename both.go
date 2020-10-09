@@ -41,24 +41,7 @@ func newMerge(ctx *cliContext, tw *taskWarrior, cal *calendarClient) *merge {
 	}
 }
 
-func (m *merge) run() error {
-	tags, err := m.ctx.makeTags()
-	if err != nil {
-		return err
-	}
-
-	tasks, err := m.tw.exportTasksByCommand(append([]string{"export"}, tags.decorate()...)...)
-	if err != nil {
-		return err
-	}
-
-	t1, t2 := m.ctx.getTimeWindow()
-
-	events, err := m.cal.gatherEvents(t1, t2)
-	if err != nil {
-		return fmt.Errorf("Trouble gathering events: %w", err)
-	}
-
+func (m *merge) makeIDMaps(tasks taskWarriorItems, events *calendar.Events) {
 	for _, event := range events.Items {
 		m.eventsIDMap[event.Id] = event
 	}
@@ -81,7 +64,9 @@ func (m *merge) run() error {
 	for _, task := range m.checkTasks {
 		m.taskIDMap[task.CalendarID] = task
 	}
+}
 
+func (m *merge) determineAlreadySyncedTaskWarrior(events *calendar.Events) error {
 	for _, event := range events.Items {
 		id := event.Id
 		task, ok := m.taskIDMap[id]
@@ -97,6 +82,15 @@ func (m *merge) run() error {
 				m.checkTasks = append(m.checkTasks, task)
 			}
 		}
+	}
+
+	return nil
+}
+
+func (m *merge) syncTasks() error {
+	tags, err := m.ctx.makeTags()
+	if err != nil {
+		return err
 	}
 
 	for _, event := range m.unsyncedEvents {
@@ -121,52 +115,105 @@ func (m *merge) run() error {
 		})
 	}
 
-	for _, task := range m.checkTasks {
-		due, err := taskTimeToGCal(task.Due)
-		if err != nil {
-			return fmt.Errorf("Task %q (%.20q) Could not convert due time to gcal event time: %w", task.UUID, task.Description, err)
-		}
+	return nil
+}
 
+func (m *merge) get() (taskWarriorItems, *calendar.Events, error) {
+	tags, err := m.ctx.makeTags()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	tasks, err := m.tw.exportTasksByCommand(append([]string{"export"}, tags.decorate()...)...)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	t1, t2 := m.ctx.getTimeWindow()
+
+	events, err := m.cal.gatherEvents(t1, t2)
+	if err != nil {
+		return nil, nil, fmt.Errorf("Trouble gathering events: %w", err)
+	}
+
+	return tasks, events, nil
+}
+
+func (m *merge) mergeExistingEvent(task *taskWarriorItem) (bool, error) {
+	event, err := m.cal.getEvent(task.CalendarID)
+	if err != nil {
+		fmt.Printf("Could not retrieve event for calendar ID (already removed?) %q: %v\n", task.CalendarID, err)
+		return false, nil
+	}
+
+	modified, err := unify(task, event)
+	if err != nil {
+		return false, fmt.Errorf("Error reconciling task and event: %w", err)
+	}
+
+	if modified {
+		event, err = m.cal.modifyEvent(event)
+		if err != nil {
+			return false, fmt.Errorf("Error modifying calendar event: %w", err)
+		}
+	}
+	return modified, nil
+}
+
+func (m *merge) createNewEvent(task *taskWarriorItem, due *calendar.EventDateTime) (bool, error) {
+	var err error
+
+	event, err := m.cal.insertEvent(&calendar.Event{
+		Summary: task.Description,
+		Start:   due,
+		End:     due,
+	})
+	if err != nil {
+		return false, fmt.Errorf("Error inserting calendar event: %w", err)
+	}
+
+	modified, err := unify(task, event)
+	if err != nil {
+		return false, fmt.Errorf("Error reconciling task and event: %w", err)
+	}
+
+	return modified, nil
+}
+
+func (m *merge) run() error {
+	tasks, events, err := m.get()
+	if err != nil {
+		return err
+	}
+
+	m.makeIDMaps(tasks, events)
+
+	if err := m.determineAlreadySyncedTaskWarrior(events); err != nil {
+		return err
+	}
+
+	if err := m.syncTasks(); err != nil {
+		return err
+	}
+
+	for _, task := range m.checkTasks {
 		var action bool
 
 		if task.CalendarID != "" {
-			event, err := m.cal.getEvent(task.CalendarID)
+			action, err = m.mergeExistingEvent(task)
 			if err != nil {
-				fmt.Printf("Could not retrieve event for calendar ID %q: %v\n", task.CalendarID, err)
-				continue
+				return err
 			}
-
-			modified, err := unify(task, event)
-			if err != nil {
-				return fmt.Errorf("Error reconciling task and event: %w", err)
-			}
-
-			if modified {
-				event, err = m.cal.modifyEvent(event)
-				if err != nil {
-					return fmt.Errorf("Error modifying calendar event: %w", err)
-				}
-			}
-
-			action = modified
 		} else {
-			var err error
-
-			event, err := m.cal.insertEvent(&calendar.Event{
-				Summary: task.Description,
-				Start:   due,
-				End:     due,
-			})
+			due, err := taskTimeToGCal(task.Due)
 			if err != nil {
-				return fmt.Errorf("Error inserting calendar event: %w", err)
+				return fmt.Errorf("Task %q (%.20q) Could not convert due time to gcal event time: %w", task.UUID, task.Description, err)
 			}
 
-			modified, err := unify(task, event)
+			action, err = m.createNewEvent(task, due)
 			if err != nil {
-				return fmt.Errorf("Error reconciling task and event: %w", err)
+				return err
 			}
-
-			action = modified
 		}
 
 		if action {
@@ -181,20 +228,7 @@ func (m *merge) run() error {
 			return fmt.Errorf("Task %q (%.20q) Could not convert due time to gcal event time: %w", task.UUID, task.Description, err)
 		}
 
-		event, err := m.cal.insertEvent(&calendar.Event{
-			Summary: task.Description,
-			Start:   due,
-			End:     due,
-		})
-		if err != nil {
-			return fmt.Errorf("Error inserting calendar event: %w", err)
-		}
-
-		modified, err := unify(task, event)
-		if err != nil {
-			return fmt.Errorf("Error reconciling task and event: %w", err)
-		}
-
+		modified, err := m.createNewEvent(task, due)
 		if modified {
 			m.checkTasks = append(m.checkTasks, task)
 		}
