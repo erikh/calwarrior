@@ -30,11 +30,11 @@ func main() {
 			Value:   cli.NewStringSlice("calendar"),
 		},
 		&cli.BoolFlag{
-			Name:    "color",
+			Name:    "no-color",
 			Aliases: []string{"c"},
-			Usage:   "Turns on color support (on by default)",
+			Usage:   "Turns off color support (on by default)",
 			EnvVars: []string{"CALWARRIOR_COLOR"},
-			Value:   true,
+			Value:   false,
 		},
 	}
 
@@ -47,7 +47,7 @@ func main() {
 }
 
 func run(ctx *cli.Context) error {
-	if !ctx.Bool("color") {
+	if ctx.Bool("no-color") {
 		color.NoColor = true
 	}
 
