@@ -40,9 +40,9 @@ func (ctx *cliContext) run() error {
 	}
 
 	m := newMerge(ctx, tw, cal)
-	if err = m.run(); err != nil { // NOTE sets outer scope err
+	if err := m.run(); err != nil {
 		m.log.Error(err)
 	}
 
-	return err
+	return nil
 }
