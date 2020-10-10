@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -81,13 +82,14 @@ type merge struct {
 	tw  *taskWarrior
 	cal *calendarClient
 	ctx *cliContext
+	log logLevel
 
 	unsyncedEvents    []*calendar.Event
 	eventsIDMap       map[string]*calendar.Event
 	unsyncedTasks     taskWarriorItems
 	checkTasks        taskWarriorItems
 	deletedTasks      taskWarriorItems
-	deletedTaskCalMap map[string]struct{}
+	deletedTaskCalMap map[string]*taskWarriorItem
 	taskIDMap         map[string]*taskWarriorItem
 }
 
@@ -96,13 +98,14 @@ func newMerge(ctx *cliContext, tw *taskWarrior, cal *calendarClient) *merge {
 		tw:  tw,
 		cal: cal,
 		ctx: ctx,
+		log: os.Getenv("DEBUG") != "",
 
 		unsyncedEvents:    []*calendar.Event{},
 		eventsIDMap:       map[string]*calendar.Event{},
 		unsyncedTasks:     taskWarriorItems{},
 		checkTasks:        taskWarriorItems{},
 		deletedTasks:      taskWarriorItems{},
-		deletedTaskCalMap: map[string]struct{}{},
+		deletedTaskCalMap: map[string]*taskWarriorItem{},
 		taskIDMap:         map[string]*taskWarriorItem{},
 	}
 }
@@ -116,7 +119,7 @@ func (m *merge) makeIDMaps(tasks taskWarriorItems, events *calendar.Events) {
 		if task.Status == "deleted" || task.Status == "completed" {
 			if _, ok := m.eventsIDMap[task.CalendarID]; ok && task.CalendarID != "" {
 				m.deletedTasks = append(m.deletedTasks, task)
-				m.deletedTaskCalMap[task.CalendarID] = struct{}{}
+				m.deletedTaskCalMap[task.CalendarID] = task
 			}
 		}
 
@@ -159,11 +162,12 @@ func (m *merge) syncTasks() error {
 	}
 
 	for _, event := range m.unsyncedEvents {
-		if _, ok := m.deletedTaskCalMap[event.Id]; ok {
+		if task, ok := m.deletedTaskCalMap[event.Id]; ok {
+			m.log.DeleteTask(task)
 			continue
 		}
 
-		fmt.Printf("Syncing %q (%.20q) to taskwarrior\n", event.Id, event.Summary)
+		m.log.SyncTask(event)
 		due, err := eventDue(event)
 		if err != nil {
 			return err
@@ -206,7 +210,7 @@ func (m *merge) get() (taskWarriorItems, *calendar.Events, error) {
 func (m *merge) mergeExistingEvent(task *taskWarriorItem) (bool, error) {
 	event, err := m.cal.getEvent(task.CalendarID)
 	if err != nil {
-		fmt.Printf("Could not retrieve event for calendar ID (already removed?) %q: %v\n", task.CalendarID, err)
+		m.log.Warnf("Could not retrieve event for calendar ID (already removed?) %q: %v", task.CalendarID, err)
 		return false, nil
 	}
 
@@ -253,7 +257,7 @@ func (m *merge) filterTasks() {
 	for _, task := range m.checkTasks {
 		// skip if no UUID
 		if task.UUID == "" {
-			fmt.Printf("Creating new task for %q\n", task.Description)
+			m.log.AddTask(task)
 			newTasks = append(newTasks, task)
 			continue
 		}
@@ -265,9 +269,7 @@ func (m *merge) filterTasks() {
 		tm[task.UUID] = task
 	}
 
-	fmt.Println("Making new list of tasks for insertion")
 	for _, task := range tm {
-		fmt.Printf("Updating task %q: %q\n", task.UUID, task.Description)
 		newTasks = append(newTasks, task)
 	}
 
@@ -304,7 +306,7 @@ func (m *merge) run() error {
 				return fmt.Errorf("Task %q (%.20q) Could not convert due time to gcal event time: %w", task.UUID, task.Description, err)
 			}
 
-			fmt.Printf("Pushing %q (%.20q) to gcal\n", task.UUID, task.Description)
+			m.log.SyncEvent(task)
 			action, err = m.createNewEvent(task, due)
 			if err != nil {
 				return err
@@ -334,7 +336,9 @@ func (m *merge) run() error {
 
 	for _, task := range m.deletedTasks {
 		if err := m.cal.deleteEvent(task.CalendarID); err == nil {
-			fmt.Printf("Deleting task %q (%.20q)\n", task.UUID, task.Description)
+			m.log.DeleteEvent(m.eventsIDMap[task.CalendarID])
+		} else {
+			m.log.Error(err)
 		}
 	}
 

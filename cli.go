@@ -39,5 +39,10 @@ func (ctx *cliContext) run() error {
 		return fmt.Errorf("Trouble contacting google calendar: %w", err)
 	}
 
-	return newMerge(ctx, tw, cal).run()
+	m := newMerge(ctx, tw, cal)
+	if err = m.run(); err != nil { // NOTE sets outer scope err
+		m.log.Error(err)
+	}
+
+	return err
 }

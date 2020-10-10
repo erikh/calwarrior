@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -33,7 +32,7 @@ func main() {
 	app.Action = run
 
 	if err := app.Run(os.Args); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		// logged earlier by merge.run()
 		os.Exit(1)
 	}
 }
