@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/fatih/color"
 	"github.com/urfave/cli/v2"
 )
 
@@ -28,6 +29,13 @@ func main() {
 			Usage:   "Tag new items coming from google calendar with the specified tag(s).",
 			Value:   cli.NewStringSlice("calendar"),
 		},
+		&cli.BoolFlag{
+			Name:    "color",
+			Aliases: []string{"c"},
+			Usage:   "Turns on color support (on by default)",
+			EnvVars: []string{"CALWARRIOR_COLOR"},
+			Value:   true,
+		},
 	}
 
 	app.Action = run
@@ -39,6 +47,10 @@ func main() {
 }
 
 func run(ctx *cli.Context) error {
+	if !ctx.Bool("color") {
+		color.NoColor = true
+	}
+
 	cli := &cliContext{ctx}
 	return cli.run()
 }
