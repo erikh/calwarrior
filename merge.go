@@ -82,7 +82,7 @@ type merge struct {
 	tw  *taskWarrior
 	cal *calendarClient
 	ctx *cliContext
-	log logLevel
+	log logger
 
 	unsyncedEvents    []*calendar.Event
 	eventsIDMap       map[string]*calendar.Event
@@ -98,7 +98,7 @@ func newMerge(ctx *cliContext, tw *taskWarrior, cal *calendarClient) *merge {
 		tw:  tw,
 		cal: cal,
 		ctx: ctx,
-		log: os.Getenv("DEBUG") != "",
+		log: logLevel(os.Getenv("DEBUG") != ""),
 
 		unsyncedEvents:    []*calendar.Event{},
 		eventsIDMap:       map[string]*calendar.Event{},

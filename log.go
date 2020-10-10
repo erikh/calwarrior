@@ -12,6 +12,7 @@ type logger interface {
 	AddTask(*taskWarriorItem)
 	AddEvent(*calendar.Event)
 	SyncTask(*calendar.Event)
+	SyncEvent(*taskWarriorItem)
 	DeleteTask(*taskWarriorItem)
 	DeleteEvent(*calendar.Event)
 	Error(error)
