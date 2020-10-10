@@ -5,6 +5,7 @@ go 1.14
 require (
 	cloud.google.com/go v0.68.0 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.0 // indirect
+	github.com/fatih/color v1.9.0
 	github.com/urfave/cli v1.22.4
 	github.com/urfave/cli/v2 v2.2.0
 	go.opencensus.io v0.22.5 // indirect

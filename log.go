@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 
+	"github.com/fatih/color"
 	"google.golang.org/api/calendar/v3"
 )
 
@@ -32,37 +33,37 @@ func (l logLevel) Debugf(s string, args ...interface{}) {
 }
 
 func (l logLevel) Noticef(s string, args ...interface{}) {
-	printfln(s, args...)
+	printfln(color.HiYellowString(s), args...)
 }
 
 func (l logLevel) Warnf(s string, args ...interface{}) {
-	printfln(s, args...)
+	printfln(color.HiWhiteString(s), args...)
 }
 
 func (l logLevel) Error(err error) {
-	printfln("%v", err)
+	printfln(color.RedString("%v"), err)
 }
 
 func (l logLevel) AddTask(task *taskWarriorItem) {
-	printfln("Creating new task for %q", task.Description)
+	printfln(color.BlueString("Creating new task for %q"), task.Description)
 }
 
 func (l logLevel) AddEvent(event *calendar.Event) {
-	printfln("Creating new task for %q", event.Summary)
+	printfln(color.CyanString("Creating new calendar event for %q"), event.Summary)
 }
 
 func (l logLevel) SyncTask(event *calendar.Event) {
-	printfln("Syncing %q (%.20q) to taskwarrior", event.Id, event.Summary)
+	printfln(color.HiBlueString("Syncing %q (%.20q) to taskwarrior"), event.Id, event.Summary)
 }
 
 func (l logLevel) SyncEvent(task *taskWarriorItem) {
-	printfln("Pushing %q (%.20q) to gcal", task.UUID, task.Description)
+	printfln(color.HiCyanString("Pushing %q (%.20q) to gcal"), task.UUID, task.Description)
 }
 
 func (l logLevel) DeleteTask(task *taskWarriorItem) {
-	printfln("Deleting task %q (%.20q)", task.UUID, task.Description)
+	printfln(color.HiMagentaString("Deleting task %q (%.20q)"), task.UUID, task.Description)
 }
 
 func (l logLevel) DeleteEvent(event *calendar.Event) {
-	printfln("Deleting event %q (%.20q)", event.Id, event.Summary)
+	printfln(color.HiMagentaString("Deleting event %q (%.20q)"), event.Id, event.Summary)
 }
