@@ -220,6 +220,9 @@ func (m *merge) mergeExistingEvent(task *taskWarriorItem) (bool, error) {
 	}
 
 	if modified {
+		if event.Summary == "CANCELLED" {
+			return false, nil // hack for canceled events
+		}
 		event, err = m.cal.modifyEvent(event)
 		if err != nil {
 			return false, fmt.Errorf("Error modifying calendar event: %w", err)
