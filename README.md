@@ -28,8 +28,12 @@ $ calwarrior --help # it has options and even help!
 You can accomplish this one of 3 ways :
 
 - The first two require you generate your own oauth2 client; this is **strongly recommended**.
-  - Setting the environment variable `CALWARRIOR_CREDENTIALS` to the `credentials.json` file.
-  - Putting the `credentials.json` in the `calwarrior` settings directory.
+  You can download a file with the oauth2 credentials directly when registering for the Google API. 
+  This file is called: 'credentials.json'. Details on how to get the credentials.json file are 
+  listed here: https://developers.google.com/calendar/api/guides/auth. You can now either:
+  - Set the environment variable `CALWARRIOR_CREDENTIALS` to point to the `credentials.json` file.
+  - Put the `credentials.json` directly into the `calwarrior` configuration directory (see below).
+  
 - Finally, you can try it by using the default oauth2 credentials embedded in the source code.
 
 ## Configuration Directory
